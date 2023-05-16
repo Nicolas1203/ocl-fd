@@ -1,2 +1,4 @@
 # ocl-fd
-Implementation of fixed directions for OCL
+Implementation of fixed directions for OCL.
+
+Code should be released soon.
