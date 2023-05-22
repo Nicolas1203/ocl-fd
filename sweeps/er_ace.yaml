@@ -1,0 +1,47 @@
+
+program         :       main.py
+method          :       grid
+project         :       ERACE
+metric:
+  name: avg_acc
+  goal: maximize
+parameters:
+  learner         :       
+    value: ERACE
+  dataset         :       
+    value: cifar100
+  n_classes       :
+    value: 100
+  n_tasks         :       
+    value: 10
+  optim:
+    values: [SGD, Adam]
+  weight_decay:
+    values: [0, 1e-4]
+  learning_rate   :
+    values: [0.0001, 0.001, 0.01, 0.1]
+  momentum:
+    values: [0, 0.9]
+  n_runs          :
+    value: 1
+  mem_size        :
+    value: 5000
+  mem_batch_size  :
+    value: 64
+  batch_size      :
+    value: 10
+  supervised      :
+    value: True
+  mem_iters       :
+    value: 1
+  tag             :
+    value: hpsearch
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - --sweep 
+  - --data-root-dir
+  - /data/dataset/torchvision 
+  - --results-root
+  - ./sweeps/csv/

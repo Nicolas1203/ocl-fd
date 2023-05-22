@@ -1,0 +1,17 @@
+
+learner         :       DERpp
+optim           :       SGD
+learning_rate   :       0.03
+momentum        :       0
+weight_decay    :       0
+derpp_alpha     :       0.2
+derpp_beta      :       1.0
+dataset         :       cifar100
+n_tasks         :       10
+mem_size        :       1000
+mem_batch_size  :       64
+batch_size      :       10
+nf              :       64
+training_type   :       inc
+tf_type         :       partial
+

@@ -1,0 +1,71 @@
+
+program         :       main.py
+method          :       grid
+project         :       GML
+metric:
+  name: avg_acc
+  goal: maximize
+parameters:
+  learner         :       
+    value: GML
+  dataset         :       
+    value: cifar100
+  n_classes       :
+    value: 100
+  n_tasks         :       
+    value: 10
+  optim:
+    values: [Adam, SGD]
+  weight_decay:
+    value: 0
+  learning_rate   :
+    values: [0.0001, 0.0005,  0.001, 0.005, 0.01, 0.05, 0.1]
+  momentum:
+    value: 0
+  n_augs:
+    value: 2
+  n_mixup:
+    value: 0
+  mem_size        :
+    value: 5000
+  mem_batch_size  :
+    value: 64
+  batch_size      :
+    value: 10
+  supervised      :
+    value: True
+  eval_mem        :
+    value: True
+  fixed_means     :
+    value: True
+  all_means       :
+    value: False
+  tot_classes_gml :
+    value: 0
+  proj_dim:
+    value:     512
+  gml_implem: 
+    value:  agd
+  var             :
+    values:  [0.05, 0.5, 1, 2, 3, 4, 5, 10]
+  mu              :
+    value:  1.0
+  seed            :
+    values: [0, 1, 2]
+  C               :
+    value: 0
+  mem_iters       :
+    value: 1
+  head_reg_coef   :
+    value: 0
+  tag             :
+    value: hpsearch
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - --sweep 
+  - --data-root-dir
+  - /data/dataset/torchvision 
+  - --results-root
+  - ./sweeps/csv/

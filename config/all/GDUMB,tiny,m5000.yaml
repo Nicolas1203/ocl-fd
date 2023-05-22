@@ -1,0 +1,7 @@
+
+learner         :       GDUMB
+dataset         :       tiny
+n_tasks         :       100
+mem_size        :       5000
+nf              :       64
+tf_type         :       partial

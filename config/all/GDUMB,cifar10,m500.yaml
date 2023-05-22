@@ -1,0 +1,7 @@
+
+learner         :       GDUMB
+dataset         :       cifar10
+n_tasks         :       5
+mem_size        :       500
+nf              :       64
+tf_type         :       partial
