@@ -202,8 +202,6 @@ When using a configuration file, parameters specified in the .yaml cannot be ove
 
 Output of the command above should contain performances like this.
 
-Output of the command above should contain performances like this.
-
     root - INFO - --------------------FORGETTING--------------------
     root - INFO - ncm     0.0000   nan      nan      nan      nan      0.0000
     root - INFO - ncm     0.2885   0.0000   nan      nan      nan      0.2885
