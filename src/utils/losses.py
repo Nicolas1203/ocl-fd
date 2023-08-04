@@ -202,20 +202,3 @@ class AGDLoss(nn.Module):
         loss = - (torch.log(densities / norms_densities) * mask)[mask_mean, :].sum()
         
         return loss
-
-
-class BYOLLoss(nn.Module):
-    """
-    Implements BYOL (https://arxiv.org/abs/2006.07733)
-    """
-    def __init__(self):
-        super().__init__()
-        self.mse_loss = nn.MSELoss(reduction='sum')
-
-    def forward(self, pred1, ema_pred1, pred2, ema_pred2):
-        pred1 = F.normalize(pred1, dim=1)
-        ema_pred1 = F.normalize(ema_pred1, dim=1)
-        pred2 = F.normalize(pred2, dim=1)
-        ema_pred2 = F.normalize(ema_pred2, dim=1)
-        mse_loss = (self.mse_loss(pred1, ema_pred2) + self.mse_loss(pred2, ema_pred1)) / 2
-        return mse_loss
