@@ -109,7 +109,6 @@ class FDLearner(BaseLearner):
                         print(f"Loss {self.loss:.3f} batch {j}", end="\r")
 
                 self.buffer.update(imgs=batch_x, labels=batch_y)
-                break
                 if (j == (len(dataloader) - 1)) and (j > 0):
                     print(
                         f"Phase : {task_name}   batch {j}/{len(dataloader)}   Loss : {self.loss:.4f}    time : {time.time() - self.start:.4f}s",

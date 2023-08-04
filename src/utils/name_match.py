@@ -8,6 +8,7 @@ from src.learners.baselines.ocm import OCMLearner
 from src.learners.baselines.derpp import DERppLearner
 from src.learners.baselines.er_ace import ER_ACELearner
 from src.learners.baselines.dvc import DVCLearner
+from src.learners.baselines.pfc import PFCLearner
 from src.learners.fd import FDLearner
 
 from src.buffers.reservoir import Reservoir
@@ -24,6 +25,7 @@ learners = {
     'DERpp': DERppLearner,
     'ERACE': ER_ACELearner,
     'DVC': DVCLearner,
+    'PFC': PFCLearner
 }
 
 buffers = {
