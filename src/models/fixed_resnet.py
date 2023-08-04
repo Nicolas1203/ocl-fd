@@ -1,3 +1,6 @@
+"""
+Code from https://github.com/DigiTurk84/class-incremental-polytope
+"""
 import torch.nn as nn
 import torch.nn.functional as F
 import math

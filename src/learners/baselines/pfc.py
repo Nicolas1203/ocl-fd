@@ -1,3 +1,6 @@
+"""
+Code adapted from https://github.com/DigiTurk84/class-incremental-polytope
+"""
 import torch
 import time
 import torch.nn as nn
@@ -35,11 +38,11 @@ class PFCLearner(CELearner):
         
     def load_model(self, **kwargs):
         out_dim = self.params.n_classes
-        print(out_dim)
         fixed_classifier_feat_dim = out_dim - 1
         fixed_weights = torch.from_numpy(self.dsimplex(num_classes=out_dim).transpose())
         
         model = FixedResNet18_cifar(
+            out_dim=out_dim,
             fixed_classifier_feat_dim=fixed_classifier_feat_dim
             ).to(device)
 
@@ -80,7 +83,7 @@ class PFCLearner(CELearner):
             
             # Update reservoir buffer
             self.buffer.update(imgs=batch_x, labels=batch_y, model=self.model)
-
+            # print(self.model.last.weight)
             if (j == (len(dataloader) - 1)) and (j > 0):
                 print(
                     f"Task : {task_name}   batch {j}/{len(dataloader)}   Loss : {loss.item():.4f}    time : {time.time() - self.start:.4f}s"
