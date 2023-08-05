@@ -10,6 +10,7 @@ import pandas as pd
 import torchvision
 import torch.cuda.amp as amp
 import random
+import os
 
 from sklearn.metrics import accuracy_score
 from copy import deepcopy
@@ -18,6 +19,7 @@ from src.learners.base import BaseLearner
 from src.utils.losses import vMFLoss, AGDLoss
 from src.utils import name_match
 from src.utils.utils import get_device
+from src.utils.metrics import forgetting_line 
 
 device = get_device()
 
@@ -38,6 +40,14 @@ class FDLearner(BaseLearner):
         for i in range(self.params.n_augs):
             self.tf_seq[f"aug{i}"] = self.transform_train.to(device)
 
+        if self.params.eval_proj:
+            self.results = []
+            self.results_forgetting = []
+        
+        # Classes to infer
+        self.classes_seen_so_far = torch.LongTensor(size=(0,)).to(device)
+
+        
     def load_criterion(self):
         if self.params.fd_loss == 'vmf':
             return vMFLoss(
@@ -71,6 +81,10 @@ class FDLearner(BaseLearner):
                 # Stream batch
                 batch_x, batch_y = batch[0], batch[1]
                 self.stream_idx += len(batch_x)
+                
+                # update classes seen
+                present = batch_y.unique().to(device)
+                self.classes_seen_so_far = torch.cat([self.classes_seen_so_far, present]).unique()
                 
                 for _ in range(self.params.mem_iters):
                     # Iteration over memory + stream
@@ -109,6 +123,7 @@ class FDLearner(BaseLearner):
                         print(f"Loss {self.loss:.3f} batch {j}", end="\r")
 
                 self.buffer.update(imgs=batch_x, labels=batch_y)
+
                 if (j == (len(dataloader) - 1)) and (j > 0):
                     print(
                         f"Phase : {task_name}   batch {j}/{len(dataloader)}   Loss : {self.loss:.4f}    time : {time.time() - self.start:.4f}s",
@@ -124,6 +139,10 @@ class FDLearner(BaseLearner):
                  # Stream batch
                 batch_x, batch_y = batch[0], batch[1]
                 self.stream_idx += len(batch_x)
+                # update classes seen
+                present = batch_y.unique().to(device)
+                self.classes_seen_so_far = torch.cat([self.classes_seen_so_far, present]).unique()
+                
                 for _ in range(self.params.mem_iters):
                     # Iteration over memory + stream
                     mem_x, mem_y = self.buffer.random_retrieve(n_imgs=self.params.mem_batch_size)
@@ -160,9 +179,116 @@ class FDLearner(BaseLearner):
                         print(f"Loss {self.loss:.3f}  batch {j}", end="\r")
                 self.buffer.update(imgs=batch_x, labels=batch_y)
 
+    def encode(self, dataloader, use_proj=False, nbatches=-1):
+        """Compute representations - labels pairs for a certain number of batches of dataloader.
+            Not really optimized.
+        Args:
+            dataloader (torch dataloader): dataloader to encode
+            nbatches (int, optional): Number of batches to encode. Use -1 for all. Defaults to -1.
+        Returns:
+            representations - labels pairs
+        """
+        i = 0
+        with torch.no_grad():
+            for sample in dataloader:
+                if nbatches != -1 and i >= nbatches:
+                    break
+                inputs = sample[0]
+                labels = sample[1]
+                
+                inputs = inputs.to(self.device)
+                if use_proj:
+                    _, logits = self.model(self.transform_test(inputs))
+                    preds = logits[:,:self.classes_seen_so_far.long().max()].argmax(dim=1)
+                    
+                    if i == 0:
+                        all_labels = labels.cpu().numpy()
+                        all_feat = preds.cpu().numpy()
+                    else:
+                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                        all_feat = np.hstack([all_feat, preds.cpu().numpy()])
+                else:
+                    features, _ = self.model(self.transform_test(inputs))
+                    if i == 0:
+                        all_labels = labels.cpu().numpy()
+                        all_feat = features.cpu().numpy()
+                    else:
+                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                        all_feat = np.vstack([all_feat, features.cpu().numpy()])
+                i += 1
+        return all_feat, all_labels
+    
+    def evaluate(self, dataloaders, task_id):
+        if self.params.eval_proj:
+            with torch.autocast(device_type='cuda', dtype=torch.float16):
+                self.model.eval()
+                accs = []
+
+                for j in range(task_id + 1):
+                    test_preds, test_targets = self.encode(dataloaders[f"test{j}"], use_proj=self.params.eval_proj)
+                    acc = accuracy_score(test_preds, test_targets)
+                    accs.append(acc)
+                for _ in range(self.params.n_tasks - task_id - 1):
+                    accs.append(np.nan)
+                self.results.append(accs)
+                
+                line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
+                line = line[0].to_numpy().tolist()
+                self.results_forgetting.append(line)
+
+                self.print_results(task_id)
+
+                return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
+        else:
+            return super.evaluate(dataloaders, task_id)
+    
+    def save_results(self):
+        if self.params.eval_proj:
+            if self.params.run_id is not None:
+                results_dir = os.path.join(self.params.results_root, self.params.tag, f"run{self.params.run_id}")
+            else:
+                results_dir = os.path.join(self.params.results_root, self.params.tag, f"run{self.params.seed}")
+            print(f"Saving accuracy results in : {results_dir}")
+            if not os.path.exists(results_dir):
+                os.makedirs(results_dir, exist_ok=True)
+            
+            df_avg = pd.DataFrame()
+            cols = [f'task {i}' for i in range(self.params.n_tasks)]
+            # Loop over classifiers results
+            # Each classifier has a value for every task. NaN if future task
+            df_clf = pd.DataFrame(self.results, columns=cols)
+            # Average accuracy over all tasks with not NaN value
+            df_avg = df_clf.mean(axis=1)
+            df_clf.to_csv(os.path.join(results_dir, 'acc.csv'), index=False)
+            df_avg.to_csv(os.path.join(results_dir, 'avg.csv'), index=False)
+            
+            df_avg = pd.DataFrame()
+            print(f"Saving forgetting results in : {results_dir}")
+            cols = [f'task {i}' for i in range(self.params.n_tasks)]
+            df_clf = pd.DataFrame(self.results_forgetting, columns=cols)
+            df_avg = df_clf.mean(axis=1)
+            df_clf.to_csv(os.path.join(results_dir, 'forgetting.csv'), index=False)
+            df_avg.to_csv(os.path.join(results_dir, 'avg_forgetting.csv'), index=False)
+
+            self.save_parameters()
+        else:
+            super().save_results()
+    
+    def print_results(self, task_id):
+        if self.params.eval_proj:
+            n_dashes = 20
+            pad_size = 8
+            print('-' * n_dashes + f"TASK {task_id + 1} / {self.params.n_tasks}" + '-' * n_dashes)
+            
+            print('-' * n_dashes + "ACCURACY" + '-' * n_dashes)        
+            for line in self.results:
+                print('Acc'.ljust(pad_size) + ' '.join(f'{value:.4f}'.ljust(pad_size) for value in line), f"{np.nanmean(line):.4f}")
+        else:
+            super().print_results(task_id)
+    
     def train_uni(self, dataloader, **kwargs):
         raise NotImplementedError
-            
+    
     def plot(self):
         self.writer.add_scalar("loss", self.loss, self.stream_idx)
         self.writer.add_scalar("n_added_so_far", self.buffer.n_added_so_far, self.stream_idx)
