@@ -303,6 +303,6 @@ class FDLearner(BaseLearner):
             augmentations = []
             for key in self.tf_seq:
                 augmentations.append(self.tf_seq[key](combined_x))
-            if not self.params.no_aug_trick:
+            if self.params.n_augs > 1:
                 augmentations.append(combined_x)
             return augmentations

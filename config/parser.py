@@ -97,7 +97,6 @@ class Parser:
         parser.add_argument('--no-kornia', action='store_false', dest='kornia')
         # Aug params
         parser.add_argument('--n-augs', type=int, default=1)
-        parser.add_argument('--no-aug-trick', action='store_true', help="If true, FD will train on B + \sum_Aug(B). If False, FD is trained on \sum_Aug(B) only.")
         parser.add_argument('--tf-type', default="full", choices=['full', 'partial'], help=' Data augmentation sequence to use.')
         # Projection trick
         parser.add_argument('--drop-fc', action="store_true", help="Drop the final FC layer and use memory data for transfer learning.")
