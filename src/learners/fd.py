@@ -290,3 +290,34 @@ class FDLearner(BaseLearner):
             all_reps.append(mem_representations_b)
         mem_representations = torch.cat(all_reps, dim=0)
         return mem_representations, mem_labels
+    
+    def encode(self, dataloader, use_proj=False, nbatches=-1):
+        """Compute representations - labels pairs for a certain number of batches of dataloader.
+            Not really optimized.
+        Args:
+            dataloader (torch dataloader): dataloader to encode
+            nbatches (int, optional): Number of batches to encode. Use -1 for all. Defaults to -1.
+        Returns:
+            representations - labels pairs
+        """
+        i = 0
+        with torch.no_grad():
+            for sample in dataloader:
+                if nbatches != -1 and i >= nbatches:
+                    break
+                inputs = sample[0]
+                labels = sample[1]
+                
+                inputs = inputs.to(self.device)
+                if use_proj:
+                    _, features = self.model(self.transform_test(inputs))
+                else:
+                    features, _ = self.model(self.transform_test(inputs))
+                if i == 0:
+                    all_labels = labels.cpu().numpy()
+                    all_feat = features.cpu().numpy()
+                else:
+                    all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                    all_feat = np.vstack([all_feat, features.cpu().numpy()])
+                i += 1
+        return all_feat, all_labels
