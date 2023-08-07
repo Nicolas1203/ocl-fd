@@ -4,6 +4,7 @@ import torch.nn as nn
 import sys
 import logging as lg
 import pandas as pd
+import numpy as np
 
 from copy import deepcopy
 
@@ -149,3 +150,57 @@ class SCRLearner(BaseLearner):
                 augmentations.append(self.tf_seq[key](combined_x))
             augmentations.append(combined_x)
             return augmentations
+    
+    def encode(self, dataloader, use_proj=False, nbatches=-1):
+        """Compute representations - labels pairs for a certain number of batches of dataloader.
+            Not really optimized.
+        Args:
+            dataloader (torch dataloader): dataloader to encode
+            nbatches (int, optional): Number of batches to encode. Use -1 for all. Defaults to -1.
+        Returns:
+            representations - labels pairs
+        """
+        i = 0
+        with torch.no_grad():
+            for sample in dataloader:
+                if nbatches != -1 and i >= nbatches:
+                    break
+                inputs = sample[0]
+                labels = sample[1]
+                
+                inputs = inputs.to(self.device)
+                if use_proj:
+                    _, features = self.model(self.transform_test(inputs))
+                else:
+                    features, _ = self.model(self.transform_test(inputs))
+                if i == 0:
+                    all_labels = labels.cpu().numpy()
+                    all_feat = features.cpu().numpy()
+                else:
+                    all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                    all_feat = np.vstack([all_feat, features.cpu().numpy()])
+                i += 1
+        return all_feat, all_labels
+    
+    def get_mem_rep_labels(self, eval=True, use_proj=False):
+        """Compute every representation -labels pairs from memory
+        Args:
+            eval (bool, optional): Whether to turn the mdoel in evaluation mode. Defaults to True.
+        Returns:
+            representation - labels pairs
+        """
+        if eval: self.model.eval()
+        mem_imgs, mem_labels = self.buffer.get_all()
+        batch_s = 10
+        n_batch = len(mem_imgs) // batch_s
+        all_reps = []
+        for i in range(n_batch):
+            mem_imgs_b = mem_imgs[i*batch_s:(i+1)*batch_s].to(self.device)
+            mem_imgs_b = self.transform_test(mem_imgs_b)
+            if use_proj:
+                _, mem_representations_b = self.model(mem_imgs_b)
+            else:
+                mem_representations_b, _ = self.model(mem_imgs_b)
+            all_reps.append(mem_representations_b)
+        mem_representations = torch.cat(all_reps, dim=0)
+        return mem_representations, mem_labels

@@ -35,8 +35,6 @@ class PFCLearner(CELearner):
             n_classes=self.params.n_classes,
             drop_method=self.params.drop_method,
         )
-        if self.params.drop_fc:
-            self.init_results()
         
     def load_model(self, **kwargs):
         out_dim = self.params.n_classes
@@ -72,7 +70,7 @@ class PFCLearner(CELearner):
                     # Augment
                     combined_x = self.augment(combined_x)
                     combined_y = torch.cat([combined_y.long() for _ in range(self.params.n_augs+1)]) if self.params.n_augs > 1 else combined_y
-                    print(combined_y.shape)
+
                     # Inference
                     logits = self.model(combined_x)
 
@@ -104,83 +102,56 @@ class PFCLearner(CELearner):
         return self.results[-1]
     
     def evaluate(self, dataloaders, task_id):
-        if not self.params.drop_fc:
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
-                self.model.eval()
-                accs = []
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            self.model.eval()
+            accs = []
 
-                for j in range(task_id + 1):
-                    test_preds, test_targets = self.encode(dataloaders[f"test{j}"])
-                    acc = accuracy_score(test_preds, test_targets)
-                    accs.append(acc)
-                for _ in range(self.params.n_tasks - task_id - 1):
-                    accs.append(np.nan)
-                self.results.append(accs)
-                
-                line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
-                line = line[0].to_numpy().tolist()
-                self.results_forgetting.append(line)
+            for j in range(task_id + 1):
+                test_preds, test_targets = self.encode(dataloaders[f"test{j}"])
+                acc = accuracy_score(test_preds, test_targets)
+                accs.append(acc)
+            for _ in range(self.params.n_tasks - task_id - 1):
+                accs.append(np.nan)
+            self.results.append(accs)
+            
+            line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
+            line = line[0].to_numpy().tolist()
+            self.results_forgetting.append(line)
 
-                self.print_results(task_id)
+            self.print_results(task_id)
 
-                return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
-        else:
-            return super().evaluate(dataloaders, task_id)
+            return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
     
     def print_results(self, task_id):
-        if not self.params.drop_fc:
-            n_dashes = 20
-            pad_size = 8
-            print('-' * n_dashes + f"TASK {task_id + 1} / {self.params.n_tasks}" + '-' * n_dashes)
-            
-            print('-' * n_dashes + "ACCURACY" + '-' * n_dashes)        
-            for line in self.results:
-                print('Acc'.ljust(pad_size) + ' '.join(f'{value:.4f}'.ljust(pad_size) for value in line), f"{np.nanmean(line):.4f}")
-        else:
-            super().print_results(task_id)
+        n_dashes = 20
+        pad_size = 8
+        print('-' * n_dashes + f"TASK {task_id + 1} / {self.params.n_tasks}" + '-' * n_dashes)
+        
+        print('-' * n_dashes + "ACCURACY" + '-' * n_dashes)        
+        for line in self.results:
+            print('Acc'.ljust(pad_size) + ' '.join(f'{value:.4f}'.ljust(pad_size) for value in line), f"{np.nanmean(line):.4f}")
     
     def encode(self, dataloader, nbatches=-1):
-        if self.params.drop_fc:
-            i = 0
-            with torch.no_grad():
-                for sample in dataloader:
-                    if nbatches != -1 and i >= nbatches:
-                        break
-                    inputs = sample[0]
-                    labels = sample[1]
-                    
-                    inputs = inputs.to(self.device)
-                    features = self.model.features(self.transform_test(inputs))
-                    
-                    if i == 0:
-                        all_labels = labels.cpu().numpy()
-                        all_feat = features.cpu().numpy()
-                    else:
-                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
-                        all_feat = np.vstack([all_feat, features.cpu().numpy()])
-                    i += 1
-            return all_feat, all_labels
-        else:
-            i = 0
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
-                for sample in dataloader:
-                    if nbatches != -1 and i >= nbatches:
-                        break
-                    inputs = sample[0]
-                    labels = sample[1]
-                    
-                    inputs = inputs.to(device)
-                    logits = self.model(self.transform_test(inputs))
-                    preds = logits.argmax(dim=1)
+        i = 0
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            for sample in dataloader:
+                if nbatches != -1 and i >= nbatches:
+                    break
+                inputs = sample[0]
+                labels = sample[1]
+                
+                inputs = inputs.to(device)
+                logits = self.model(self.transform_test(inputs))
+                preds = logits.argmax(dim=1)
 
-                    if i == 0:
-                        all_labels = labels.cpu().numpy()
-                        all_feat = preds.cpu().numpy()
-                        i += 1
-                    else:
-                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
-                        all_feat = np.hstack([all_feat, preds.cpu().numpy()])
-            return all_feat, all_labels
+                if i == 0:
+                    all_labels = labels.cpu().numpy()
+                    all_feat = preds.cpu().numpy()
+                    i += 1
+                else:
+                    all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                    all_feat = np.hstack([all_feat, preds.cpu().numpy()])
+        return all_feat, all_labels
     
     def save_results(self):
         if self.params.run_id is not None:
@@ -231,26 +202,6 @@ class PFCLearner(CELearner):
         combined_x = torch.cat([mem_x, batch_x])
         combined_y = torch.cat([mem_y, batch_y])
         return combined_x, combined_y
-
-    def get_mem_rep_labels(self, eval=True, **kwargs):
-        """Compute every representation -labels pairs from memory
-        Args:
-            eval (bool, optional): Whether to turn the mdoel in evaluation mode. Defaults to True.
-        Returns:
-            representation - labels pairs
-        """
-        if eval: self.model.eval()
-        mem_imgs, mem_labels = self.buffer.get_all()
-        batch_s = 10
-        n_batch = len(mem_imgs) // batch_s
-        all_reps = []
-        for i in range(n_batch):
-            mem_imgs_b = mem_imgs[i*batch_s:(i+1)*batch_s].to(self.device)
-            mem_imgs_b = self.transform_test(mem_imgs_b)
-            mem_representations_b = self.model.features(mem_imgs_b)
-            all_reps.append(mem_representations_b)
-        mem_representations = torch.cat(all_reps, dim=0)
-        return mem_representations, mem_labels
     
     def augment(self, combined_x, **kwargs):
         with torch.no_grad():

@@ -522,10 +522,6 @@ class SupConResNet(nn.Module):
 
         y = kwargs.get('y')
              
-        if self.ortho and y is not None:
-            feat = make_orthogonal(feat.double(), y.long()).float()
-            proj = self.head(feat) if self.head is not None else feat
-            
         feat = F.normalize(feat, dim=1) if feat_norm else feat
         proj = F.normalize(proj, dim=1) if proj_norm else proj
 
