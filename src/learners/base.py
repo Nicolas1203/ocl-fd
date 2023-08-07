@@ -307,8 +307,10 @@ class BaseLearner(torch.nn.Module):
                         if return_raw:
                             out_rep.append(img.cpu().numpy())
                         else:
-                            i = 1 if return_proj else 0
-                            out_rep.append(np.array(self.model(self.transform_test(img.to(self.device).unsqueeze(0)))[i][0].cpu()))
+                            if return_proj:
+                                out_rep.append(np.array(self.model.logits(self.transform_test(img.to(self.device).unsqueeze(0)))[0].cpu()))
+                            else:
+                                out_rep.append(np.array(self.model(self.transform_test(img.to(self.device).unsqueeze(0)))[0].cpu()))
                         out_labels.append(label)
                     if len(out_labels) >= (len(labels_list) * data_per_class):
                         if output_format == "numpy":
@@ -340,9 +342,9 @@ class BaseLearner(torch.nn.Module):
                 
                 inputs = inputs.to(self.device)
                 if use_proj:
-                    _, features = self.model(self.transform_test(inputs))
+                    features = self.model.logits(self.transform_test(inputs))
                 else:
-                    features, _ = self.model(self.transform_test(inputs))
+                    features = self.model(self.transform_test(inputs))
                 if i == 0:
                     all_labels = labels.cpu().numpy()
                     all_feat = features.cpu().numpy()
@@ -451,9 +453,9 @@ class BaseLearner(torch.nn.Module):
             mem_imgs_b = mem_imgs[i*batch_s:(i+1)*batch_s].to(self.device)
             mem_imgs_b = self.transform_test(mem_imgs_b)
             if use_proj:
-                _, mem_representations_b = self.model(mem_imgs_b)
+                mem_representations_b = self.model.logits(mem_imgs_b)
             else:
-                mem_representations_b, _ = self.model(mem_imgs_b)
+                mem_representations_b = self.model(mem_imgs_b)
             all_reps.append(mem_representations_b)
         mem_representations = torch.cat(all_reps, dim=0)
         return mem_representations, mem_labels

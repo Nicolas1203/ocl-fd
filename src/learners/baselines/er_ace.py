@@ -62,7 +62,7 @@ class ER_ACELearner(ERLearner):
             for _ in range(self.params.mem_iters):
                 
                 # process stream
-                aug_xs = self.transform_train(batch_x.to(device))
+                aug_xs = self.augment(batch_x.to(device))
                 logits = self.model.logits(aug_xs)
                 mask = torch.zeros_like(logits).to(device)
 
@@ -75,17 +75,21 @@ class ER_ACELearner(ERLearner):
                     unseen = unseen[unseen != c]
                 mask[:, unseen] = 1    
 
-                logits_stream = logits.masked_fill(mask == 0, -1e9)   
+                logits_stream = logits.masked_fill(mask == 0, -1e9)
+                batch_y = torch.cat([batch_y.long() for _ in range(self.params.n_augs+1)]) if self.params.n_augs > 1 else batch_y
+                
                 loss = self.criterion(logits_stream, batch_y.to(device))
 
                 mem_x, mem_y = self.buffer.random_retrieve(n_imgs=self.params.mem_batch_size)
 
                 if mem_x.size(0) > 0:
                     # Augment
-                    aug_xm = self.transform_train(mem_x).to(device)
+                    aug_xm = self.augment(mem_x).to(device)
 
                     # Inference
                     logits_mem = self.model.logits(aug_xm)
+                    mem_y = torch.cat([mem_y.long() for _ in range(self.params.n_augs+1)]) if self.params.n_augs > 1 else mem_y
+                    
                     loss += self.criterion(logits_mem, mem_y.to(device))
 
                 # Loss

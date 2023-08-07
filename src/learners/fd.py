@@ -54,12 +54,14 @@ class FDLearner(BaseLearner):
                 var=self.params.var,
                 mu=self.params.mu,
                 proj_dim=self.params.proj_dim,
+                norm_all=self.params.norm_all_classes
             )
         elif self.params.fd_loss == 'agd':
             return AGDLoss(
                 var=self.params.var,
                 mu=self.params.mu,
-                proj_dim=self.params.proj_dim
+                proj_dim=self.params.proj_dim,
+                norm_all=self.params.norm_all_classes
             )
 
     def train(self, dataloader, **kwargs):
@@ -83,7 +85,7 @@ class FDLearner(BaseLearner):
                 self.stream_idx += len(batch_x)
                 
                 # update classes seen
-                present = batch_y.unique().to(device)
+                present = batch_y.long().unique().to(device)
                 self.classes_seen_so_far = torch.cat([self.classes_seen_so_far, present]).unique()
                 
                 for _ in range(self.params.mem_iters):
@@ -240,7 +242,7 @@ class FDLearner(BaseLearner):
 
                 return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
         else:
-            return super.evaluate(dataloaders, task_id)
+            return super().evaluate(dataloaders, task_id)
     
     def save_results(self):
         if self.params.eval_proj:
@@ -301,6 +303,6 @@ class FDLearner(BaseLearner):
             augmentations = []
             for key in self.tf_seq:
                 augmentations.append(self.tf_seq[key](combined_x))
-                
-            augmentations.append(combined_x)
+            if not self.params.no_aug_trick:
+                augmentations.append(combined_x)
             return augmentations
