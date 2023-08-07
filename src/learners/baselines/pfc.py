@@ -70,8 +70,9 @@ class PFCLearner(CELearner):
                     combined_x, combined_y = self.combine(batch_x, batch_y, mem_x, mem_y)  # (batch_size, nb_channel, img_size, img_size)
 
                     # Augment
-                    combined_x = self.transform_train(combined_x)
-
+                    combined_x = self.augment(combined_x)
+                    combined_y = torch.cat([combined_y.long() for _ in range(self.params.n_augs+1)]) if self.params.n_augs > 1 else combined_y
+                    print(combined_y.shape)
                     # Inference
                     logits = self.model(combined_x)
 
@@ -250,6 +251,17 @@ class PFCLearner(CELearner):
             all_reps.append(mem_representations_b)
         mem_representations = torch.cat(all_reps, dim=0)
         return mem_representations, mem_labels
+    
+    def augment(self, combined_x, **kwargs):
+        with torch.no_grad():
+            augmentations = []
+            for _ in range(self.params.n_augs):
+                augmentations.append(self.transform_train(combined_x))
+            # If its 1, we train as usual.
+            # If above 1, we add raw data for fair comparison with FD-AGD, and SCR.
+            if self.params.n_augs > 1:
+                augmentations.append(combined_x)
+            return torch.cat(augmentations)
     
     def dsimplex(self, num_classes=10):
         def simplex_coordinates2(m):

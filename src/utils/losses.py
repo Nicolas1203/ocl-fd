@@ -164,6 +164,7 @@ class AGDLoss(nn.Module):
         self.dim = kwargs.get('proj_dim', 128)
         self.mu = kwargs.get('mu', 1)
         self.init_class_seen()
+        self.norm_all = kwargs.get('norm_all', False)
 
     def init_class_seen(self):
         self.class_seen = torch.LongTensor(size=(0,)).to(device)
@@ -194,8 +195,10 @@ class AGDLoss(nn.Module):
             d=torch.tensor([self.dim], dtype=torch.float64).to(device),
             N=torch.arange(0,40)
             ).to(device)
-
-        mask_mean = labels.unique().long()
+        if self.norm_all:
+            mask_mean = torch.arange(len(densities)).to(device)
+        else:
+            mask_mean = labels.unique().long()
         norms_densities = densities[mask_mean, :].sum(0, keepdim=True)
 
         # Compute final loss

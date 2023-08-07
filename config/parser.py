@@ -98,10 +98,13 @@ class Parser:
         # Aug params
         parser.add_argument('--n-augs', type=int, default=1)
         parser.add_argument('--tf-type', default="full", choices=['full', 'partial'], help=' Data augmentation sequence to use.')
-        # GML arguments
+        # Projection trick
+        parser.add_argument('--drop-fc', action="store_true", help="Drop the final FC layer and use memory data for transfer learning.")
+        # FD arguments
         parser.add_argument('--var', type=float, default=0.14, help="Variance for fd loss. kappa=1/var for VMF and kappa=1/2*var for AGD.")
         parser.add_argument('--fd-loss', help="vmf or agd loss", default='vmf')
         parser.add_argument('-mu', type=float, default=1.0, help="mu value for FD model.")
+        parser.add_argument('--norm-all-classes', action='store_true', help="Use this to normalize using every classes known.")
         # DERpp arguments
         parser.add_argument('--derpp-alpha', type=float, default=0.1, help="Values of alpha un der++ loss")
         parser.add_argument('--derpp-beta', type=float, default=0.5, help="Values of beta un der++ loss")
