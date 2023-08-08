@@ -11,8 +11,10 @@ import torchvision
 import torch.cuda.amp as amp
 import random
 import os
+import matplotlib.pyplot as plt
+import wandb
 
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from copy import deepcopy
 
 from src.learners.base import BaseLearner
@@ -187,10 +189,19 @@ class FDLearner(BaseLearner):
                 self.model.eval()
                 accs = []
 
+                all_preds = []
+                all_targets = []
                 for j in range(task_id + 1):
                     test_preds, test_targets = self.encode(dataloaders[f"test{j}"], use_proj=self.params.eval_proj)
                     acc = accuracy_score(test_preds, test_targets)
                     accs.append(acc)
+                    if not self.params.no_wandb:
+                        all_preds = np.concatenate([all_preds, test_preds])
+                        all_targets = np.concatenate([all_targets, test_targets])
+                        wandb.log({
+                            f"acc_{j}": acc,
+                            "task_id": task_id
+                        })
                 for _ in range(self.params.n_tasks - task_id - 1):
                     accs.append(np.nan)
                 self.results.append(accs)
@@ -200,6 +211,21 @@ class FDLearner(BaseLearner):
                 self.results_forgetting.append(line)
 
                 self.print_results(task_id)
+                
+                # Make confusion matrix
+                if not self.params.no_wandb:
+                    # re-index to have classes in task order
+                    all_targets = [self.params.labels_order.index(int(i)) for i in all_targets]
+                    all_preds = [self.params.labels_order.index(int(i)) for i in all_preds]
+                    n_im_pt = self.params.n_classes // self.params.n_tasks
+                    cm = confusion_matrix(all_targets, all_preds)
+                    cm_log = np.log(1 + cm)
+                    fig = plt.matshow(cm_log)
+                    wandb.log({
+                            "cm_raw": cm,
+                            "cm": fig,
+                            "task_id": task_id
+                        })
 
                 return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
         else:
@@ -264,8 +290,7 @@ class FDLearner(BaseLearner):
             augmentations = []
             for key in self.tf_seq:
                 augmentations.append(self.tf_seq[key](combined_x))
-            if self.params.n_augs > 1:
-                augmentations.append(combined_x)
+            augmentations.append(combined_x)
             return augmentations
     
     def get_mem_rep_labels(self, eval=True, use_proj=False):
@@ -310,14 +335,22 @@ class FDLearner(BaseLearner):
                 
                 inputs = inputs.to(self.device)
                 if use_proj:
-                    _, features = self.model(self.transform_test(inputs))
+                    logits = self.model.logits(self.transform_test(inputs))
+                    preds = logits[:,:self.classes_seen_so_far.long().max()].argmax(dim=1)
+
+                    if i == 0:
+                        all_labels = labels.cpu().numpy()
+                        all_feat = preds.cpu().numpy()
+                    else:
+                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                        all_feat = np.hstack([all_feat, preds.cpu().numpy()])
                 else:
                     features, _ = self.model(self.transform_test(inputs))
-                if i == 0:
-                    all_labels = labels.cpu().numpy()
-                    all_feat = features.cpu().numpy()
-                else:
-                    all_labels = np.hstack([all_labels, labels.cpu().numpy()])
-                    all_feat = np.vstack([all_feat, features.cpu().numpy()])
+                    if i == 0:
+                        all_labels = labels.cpu().numpy()
+                        all_feat = features.cpu().numpy()
+                    else:
+                        all_labels = np.hstack([all_labels, labels.cpu().numpy()])
+                        all_feat = np.vstack([all_feat, features.cpu().numpy()])
                 i += 1
         return all_feat, all_labels

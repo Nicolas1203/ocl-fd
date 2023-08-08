@@ -526,7 +526,9 @@ class SupConResNet(nn.Module):
         proj = F.normalize(proj, dim=1) if proj_norm else proj
 
         return feat, proj
-
+    
+    def logits(self, x, **kwargs):
+        return self.head(self.encoder(x))
 
 class GMLResnet(nn.Module):
     """backbone + projection head"""

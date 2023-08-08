@@ -34,13 +34,17 @@ class ERLearner(BaseLearner):
         )
         if self.params.drop_fc:
             self.init_results()
-    
+        
     def load_model(self, **kwargs):
-        return ResNet18(
-            dim_in=self.params.dim_in,
-            nclasses=self.params.n_classes,
-            nf=self.params.nf
-        ).to(device)
+        if self.params.n_augs == 1:
+            return ResNet18(
+                dim_in=self.params.dim_in,
+                nclasses=self.params.n_classes,
+                nf=self.params.nf
+            ).to(device)
+        else:
+            # Using the same network as SCR and FD-AGD (projection head)
+            return super().load_model(**kwargs)
         
     def load_criterion(self):
         return nn.CrossEntropyLoss()

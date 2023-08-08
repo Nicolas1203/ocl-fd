@@ -48,7 +48,7 @@ class PFCLearner(CELearner):
 
         model.last.weight.requires_grad = False        
         model.last.weight.copy_(fixed_weights)
-        
+
         return model
     
     def train(self, dataloader, **kwargs):

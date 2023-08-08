@@ -61,7 +61,7 @@ class Parser:
         parser.add_argument('--data-root-dir', default='/data/',
                             help='Root dir containing the dataset to train on.')
         parser.add_argument('--min-crop', type=float, default=0.2, help="Minimum size for cropping in data augmentation. range (0-1)")
-        parser.add_argument('--dataset', '-d', default="cifar10",
+        parser.add_argument('--dataset', '-d', default="cifar100",
                             choices=['mnist', 'fmnist', 'cifar10', 'cifar100', 'tiny', 'sub', 'yt'],
                             help='Dataset to train on')
         parser.add_argument('--training-type', default='inc', choices=['uni', 'inc', 'blurry'],
@@ -77,8 +77,8 @@ class Parser:
         parser.add_argument('--temperature', default=0.07, type=float, 
                             metavar='T', help='temperature parameter for softmax')
         # Memory parameters
-        parser.add_argument('--mem-size', type=int, default=200, help='Memory size for continual learning')  # used also for ltm
-        parser.add_argument('--mem-batch-size', '-mbs', type=int, default=200, help="How many images do you want to retrieve from the memory/ltm")  # used also for ltm
+        parser.add_argument('--mem-size', type=int, default=5000, help='Memory size for continual learning')  # used also for ltm
+        parser.add_argument('--mem-batch-size', '-mbs', type=int, default=64, help="How many images do you want to retrieve from the memory/ltm")  # used also for ltm
         parser.add_argument('--buffer', default='reservoir', help="What buffer do you want ? See available buffers in utils/name_match.py")
         parser.add_argument('--drop-method', default='random', choices=['random'], help="How to drop images from memory when adding new ones.")
         parser.add_argument('--mem-iters', default=1, type=int, help="Number of iterations on memory")

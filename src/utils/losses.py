@@ -103,6 +103,7 @@ class vMFLoss(nn.Module):
         self.var = var
         self.dim = kwargs.get('proj_dim', 128)
         self.mu = kwargs.get('mu', 1)
+        self.norm_all = kwargs.get('norm_all', False)
         self.init_class_seen()
         self.init_means()
 
@@ -142,11 +143,14 @@ class vMFLoss(nn.Module):
         
         mc = self.get_means().to(device)
         
-        mask_mean = labels.unique().long()
-
         zi_mc = (features_flat.unsqueeze(0) - mc.unsqueeze(1)) # z_i - mc
         norm_zi_mc = - (zi_mc ** 2).sum(dim=2) / (2*self.var)    # -||z_i - m_c||^2 / 2sigma
         logits_exps = torch.exp(norm_zi_mc).to(device)
+        
+        if self.norm_all:
+            mask_mean = torch.arange(len(logits_exps)).to(device)
+        else:
+            mask_mean = labels.unique().long()
         
         norms_exp = logits_exps[mask_mean, :].sum(0)
 

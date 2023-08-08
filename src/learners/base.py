@@ -13,13 +13,14 @@ import random as r
 import json
 import torchvision
 import wandb
+import matplotlib.pyplot as plt
 
 from datetime import datetime
 from sklearn.neighbors import KNeighborsClassifier, NearestCentroid
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils._testing import ignore_warnings
 from torchvision import transforms
@@ -151,7 +152,7 @@ class BaseLearner(torch.nn.Module):
             input_channels=self.params.nb_channels,
             nf=self.params.nf
         )
-        model = nn.DataParallel(model)
+        # model = nn.DataParallel(model)
         model.to(device)
         return model
 
@@ -215,11 +216,20 @@ class BaseLearner(torch.nn.Module):
                 test_representation, test_targets = self.encode(dataloaders[f"test{j}"], use_proj=self.params.eval_proj)
                 representations[f"test{j}"] = test_representation
                 targets[f"test{j}"] = test_targets
+            
+            all_preds = []
+            all_targets = []
             # Compute accuracies
             for clf, clf_name in zip(classifiers, self.classifiers_list):
                 accs[clf_name] = []
                 for j in range(task_id + 1):
-                    acc = accuracy_score(targets[f"test{j}"], clf.predict(representations[f'test{j}'])) 
+                    test_preds = clf.predict(representations[f'test{j}'])
+                    test_targets = targets[f"test{j}"]
+                    if clf_name == 'ncm' or clf_name == 'acc':
+                        all_preds = np.concatenate([all_preds, test_preds])
+                        all_targets = np.concatenate([all_targets, test_targets])
+                        
+                    acc = accuracy_score(test_targets, test_preds) 
                     accs[clf_name].append(acc)
                     # Wandb logs
                     if not self.params.no_wandb:
@@ -237,6 +247,20 @@ class BaseLearner(torch.nn.Module):
                 self.results_forgetting[clf_name].append(line)
             
             self.print_results(task_id)
+                
+            # Make confusion matrix
+            if not self.params.no_wandb:
+                # re-index to have classes in task order
+                all_targets = [self.params.labels_order.index(int(i)) for i in all_targets]
+                all_preds = [self.params.labels_order.index(int(i)) for i in all_preds]
+                cm = confusion_matrix(all_targets, all_preds)
+                cm_log = np.log(1 + cm)
+                fig = plt.matshow(cm_log)
+                wandb.log({
+                        "cm_raw": cm,
+                        "cm": fig,
+                        "task_id": task_id
+                    })
 
             return np.nanmean(self.results['ncm'][-1]), np.nanmean(self.results_forgetting['ncm'][-1])
 
@@ -308,7 +332,7 @@ class BaseLearner(torch.nn.Module):
                             out_rep.append(img.cpu().numpy())
                         else:
                             if return_proj:
-                                out_rep.append(np.array(self.model.logits(self.transform_test(img.to(self.device).unsqueeze(0)))[0].cpu()))
+                                out_rep.append(np.array(self.model.logits(self.transform_test(img.to(self.device).unsqueeze(0))).cpu()))
                             else:
                                 out_rep.append(np.array(self.model(self.transform_test(img.to(self.device).unsqueeze(0)))[0].cpu()))
                         out_labels.append(label)
@@ -344,7 +368,7 @@ class BaseLearner(torch.nn.Module):
                 if use_proj:
                     features = self.model.logits(self.transform_test(inputs))
                 else:
-                    features = self.model(self.transform_test(inputs))
+                    features, _ = self.model(self.transform_test(inputs))
                 if i == 0:
                     all_labels = labels.cpu().numpy()
                     all_feat = features.cpu().numpy()
@@ -455,7 +479,7 @@ class BaseLearner(torch.nn.Module):
             if use_proj:
                 mem_representations_b = self.model.logits(mem_imgs_b)
             else:
-                mem_representations_b = self.model(mem_imgs_b)
+                mem_representations_b, _ = self.model(mem_imgs_b)
             all_reps.append(mem_representations_b)
         mem_representations = torch.cat(all_reps, dim=0)
         return mem_representations, mem_labels
