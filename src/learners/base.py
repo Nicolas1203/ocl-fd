@@ -144,14 +144,17 @@ class BaseLearner(torch.nn.Module):
         Returns:
             untrained torch backbone model
         """
-        model = resnet.SupConResNet(
-            head=self.params.head,
-            dim_in=self.params.dim_in,
-            dim_int=self.params.dim_int,
-            proj_dim=self.params.proj_dim,
-            input_channels=self.params.nb_channels,
-            nf=self.params.nf
-        )
+        if self.params.dataset == 'core':
+            return resnet.CORe_ResNet18(nclasses=self.params.proj_dim).to(device)
+        else:
+            model = resnet.SupConResNet(
+                head=self.params.head,
+                dim_in=self.params.dim_in,
+                dim_int=self.params.dim_int,
+                proj_dim=self.params.proj_dim,
+                input_channels=self.params.nb_channels,
+                nf=self.params.nf
+            )
         # model = nn.DataParallel(model)
         model.to(device)
         return model
@@ -191,6 +194,11 @@ class BaseLearner(torch.nn.Module):
         Returns:
             NCM current average accuracy and average forgetting
         """
+        if self.params.dataset == 'core':
+                acc = self.evaluate_offline(dataloaders, task_id)
+                fgt = np.max(self.results['ncm']) - acc
+                return acc, fgt
+            
         with torch.no_grad():
             self.model.eval()
 
@@ -419,7 +427,10 @@ class BaseLearner(torch.nn.Module):
             os.makedirs(results_dir, exist_ok=True)
         
         df_avg = pd.DataFrame()
-        cols = [f'task {i}' for i in range(self.params.n_tasks)]
+        if self.params.dataset =='core':
+            cols = ['test']
+        else:
+            cols = [f'task {i}' for i in range(self.params.n_tasks)]
         # Loop over classifiers results
         for clf_name in self.results:
             # Each classifier has a value for every task. NaN if future task

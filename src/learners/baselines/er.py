@@ -14,7 +14,7 @@ from src.learners.ce import CELearner
 from src.learners.base import BaseLearner
 from src.utils.losses import SupConLoss
 from src.buffers.reservoir import Reservoir
-from src.models.resnet import ResNet18
+from src.models.resnet import ResNet18, CORe_ResNet18
 from src.utils.metrics import forgetting_line   
 from src.utils.utils import get_device
 
@@ -37,11 +37,14 @@ class ERLearner(BaseLearner):
         
     def load_model(self, **kwargs):
         if self.params.n_augs == 1:
-            return ResNet18(
-                dim_in=self.params.dim_in,
-                nclasses=self.params.n_classes,
-                nf=self.params.nf
-            ).to(device)
+            if self.params.dataset == 'core':
+                return CORe_ResNet18(nclasses=self.params.n_classes).to(device)
+            else:
+                return ResNet18(
+                    dim_in=self.params.dim_in,
+                    nclasses=self.params.n_classes,
+                    nf=self.params.nf
+                ).to(device)
         else:
             # Using the same network as SCR and FD-AGD (projection head)
             return super().load_model(**kwargs)
@@ -89,7 +92,7 @@ class ERLearner(BaseLearner):
                     f"Task : {task_name}   batch {j}/{len(dataloader)}   Loss : {loss.item():.4f}    time : {time.time() - self.start:.4f}s"
                 )
 
-    def evaluate_offline(self, dataloaders, epoch):
+    def evaluate_offline(self, dataloaders, epoch=0):
         with torch.no_grad():
             self.model.eval()
 
@@ -97,11 +100,16 @@ class ERLearner(BaseLearner):
             acc = accuracy_score(test_preds, test_targets)
             self.results.append(acc)
             
-        print(f"ACCURACY {self.results[-1]}")
+        print(f"ACCURACY Task {epoch}: {self.results[-1]}")
         return self.results[-1]
     
     def evaluate(self, dataloaders, task_id):
         if not self.params.drop_fc:
+            if self.params.dataset == 'core':
+                acc = self.evaluate_offline(dataloaders, task_id)
+                self.results.append(acc)
+                fgt = np.max(self.results) - acc
+                return acc, fgt
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 self.model.eval()
                 accs = []
@@ -217,6 +225,9 @@ class ERLearner(BaseLearner):
     def augment(self, combined_x, **kwargs):
         with torch.no_grad():
             augmentations = []
+            if self.params.n_augs == 0:
+                augmentations.append(combined_x)
+                return torch.cat(augmentations)
             for _ in range(self.params.n_augs):
                 augmentations.append(self.transform_train(combined_x))
             # If its 1, we train as usual.

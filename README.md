@@ -215,6 +215,40 @@ Output of the command above should contain performances like this.
     root - INFO - ncm     0.3135   0.2070   0.4780   0.2875   nan      0.3215
     root - INFO - ncm     0.1935   0.3105   0.3355   0.2625   0.3045   0.2813
 
+# Datasets
+
+#https://github.com/vlomonaco/core50# CIFAR10 and CIFAR100
+
+These datasets are automatically downloaded if not present.
+
+## Tiny-IN
+
+TODO
+
+## CORe50
+
+Download `cropped_128x128_images.zip`from [the official website](https://vlomonaco.github.io/core50/index.html#download) or do run:
+
+        wget http://bias.csr.unibo.it/maltoni/download/core50/core50_128x128.zip
+
+then exatract and rename make the changes so that you have the following file architecture:
+
+"""bash
+core50/
+├── test
+│   ├── s10
+│   ├── s3
+│   └── s7
+└── train
+    ├── s1
+    ├── s11
+    ├── s2
+    ├── s4
+    ├── s5
+    ├── s6
+    ├── s8
+    └── s9
+"""
 
 # Cite
 

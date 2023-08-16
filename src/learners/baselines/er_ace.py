@@ -35,13 +35,6 @@ class ER_ACELearner(ERLearner):
         )
         self.classes_seen_so_far = torch.LongTensor(size=(0,)).to(device)
     
-    def load_model(self, **kwargs):
-        return ResNet18(
-            dim_in=self.params.dim_in,
-            nclasses=self.params.n_classes,
-            nf=self.params.nf
-        ).to(device)
-    
     def load_criterion(self):
         return F.cross_entropy
 

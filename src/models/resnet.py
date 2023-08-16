@@ -119,6 +119,7 @@ class ResNet(nn.Module):
 
     def logits(self, x):
         out = self.features(x)
+        print(out.shape)
         out = self.linear(out)
         return out
 
@@ -680,33 +681,59 @@ class QNet(nn.Module):
         return zzt
 
 
-class BYOLResnet(nn.Module):
-    """backbone + projection head"""
-    def __init__(self, dim_in=512, proj_dim=128, dim_int=512, nf=64, **kwargs):
+class CORe_ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes, nf, bias, instance_norm=False, input_channels=3):
         super().__init__()
-        self.encoder = ResNet18(100, nf=nf, dim_in=dim_in)
-        self.projector = nn.Sequential(
-                nn.Linear(dim_in, dim_int),
-                nn.ReLU(inplace=True),
-                nn.Linear(dim_int, proj_dim)
-            )
-        self.predictor = nn.Sequential(
-            nn.Linear(proj_dim, dim_int),
-            nn.ReLU(inplace=True),
-            nn.Linear(dim_int, proj_dim)
-        )
-    
+        self.in_planes = nf
+        self.conv1 = nn.Conv2d(input_channels, nf * 1, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(nf * 1) if bn else nn.Identity()
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.instance_norm=instance_norm
+        if self.instance_norm:
+            self.bn1 = nn.InstanceNorm2d(nf * 1)
+        self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
+        self.linear = nn.Linear(512, num_classes, bias=bias)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def features(self, x):
+        '''Features before FC layers'''
+        out = relu(self.bn1(self.conv1(x)))
+        out = self.maxpool(out)
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        return out
+
+    def logits(self, x):
+        out = self.features(x)
+        out = self.linear(out)
+        return out
+
     def forward(self, x, **kwargs):
-        feat = self.encoder(x)
-        pred = self.predictor(self.projector(feat))
+        feat = self.features(x)
+        proj = self.linear(feat)
         
         feat_norm = kwargs.get('feat_norm', True)
         proj_norm = kwargs.get('proj_norm', True)
-
+             
         feat = F.normalize(feat, dim=1) if feat_norm else feat
-        pred = F.normalize(pred, dim=1) if proj_norm else pred
+        proj = F.normalize(proj, dim=1) if proj_norm else proj
 
-        return feat, pred
+        return feat, proj
 
-    def forward_ema(self, x, **kwargs):
-        return F.normalize(self.projector(self.encoder(x)), dim=1)
+
+def CORe_ResNet18(nclasses, nf=64, bias=True):
+    return CORe_ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, bias)

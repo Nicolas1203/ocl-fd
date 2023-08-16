@@ -10,7 +10,6 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import Resize
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader
 from torch.utils.data import DataLoader, ConcatDataset, Subset
 from torch.utils.data.sampler import SubsetRandomSampler
 # from kornia.augmentation import Resize
@@ -21,6 +20,7 @@ from src.datasets import CIFAR10, SplitCIFAR10, CIFAR100, SplitCIFAR100, SplitIm
 from src.datasets import BlurryCIFAR10, BlurryCIFAR100, BlurryTiny
 from src.datasets.tinyImageNet import TinyImageNet
 from src.datasets.split_tiny import SplitTiny
+from src.datasets.core50_session import CORe50Session
 
 device = get_device()
 
@@ -31,13 +31,7 @@ def get_loaders(args):
         l = np.arange(args.n_classes)
         np.random.shuffle(l)
         args.labels_order = l.tolist()
-    if args.dataset == 'mnist':
-        dataset_train = MNIST(args.data_root_dir, train=True, download=True, transform=tf)
-        dataset_test = MNIST(args.data_root_dir, train=False, download=True, transform=tf)
-    elif args.dataset == 'fmnist':
-        dataset_train = FashionMNIST(args.data_root_dir, train=True, download=True, transform=tf)
-        dataset_test = FashionMNIST(args.data_root_dir, train=False, download=True, transform=tf)
-    elif args.dataset == 'cifar10':
+    if args.dataset == 'cifar10':
         if args.training_type == 'blurry':
             dataset_train = BlurryCIFAR10(root=args.data_root_dir, labels_order=args.labels_order,
                 train=True, download=True, transform=tf, n_tasks=args.n_tasks, scale=args.blurry_scale)
@@ -60,22 +54,10 @@ def get_loaders(args):
             dataset_test = TinyImageNet(args.data_root_dir, train=False, download=True, transform=tf)
         else:
             dataset_train = TinyImageNet(args.data_root_dir, train=True, download=True, transform=tf)
-            dataset_test = TinyImageNet(args.data_root_dir, train=False, download=True, transform=tf) 
-    elif args.dataset == 'sub':
-        # Loading only the necessary labels for SubImageNet
-        dataset_train = SplitImageNet(root=args.data_root_dir, split='train',
-                                        selected_labels=np.arange(args.n_classes), transform=tf)
-        dataset_test = SplitImageNet(root=args.data_root_dir, split='val',
-                                        selected_labels=np.arange(args.n_classes), transform=tf)
-    elif args.dataset == 'yt':
-        tf = transforms.Compose([
-                transforms.PILToTensor(),
-                transforms.ConvertImageDtype(torch.float32),
-                Resize(size=(256,256)),
-        ])
-        dataset_train = ImageFolder('/storage8To/datasets/deepsponsorblock/images/old/train_old', transform=tf)
-        dataset_test = ImageFolder('/storage8To/datasets/deepsponsorblock/images/old/test_old', transform=tf)
-        
+            dataset_test = TinyImageNet(args.data_root_dir, train=False, download=True, transform=tf)
+    elif args.dataset == 'core':
+        dataloaders = load_core(args, dataloaders=dataloaders, root=args.data_root_dir, transform=tf)
+        return dataloaders
     if args.training_type == 'inc':
         dataloaders = add_incremental_splits(args, dataloaders, tf, tag="train")
         dataloaders = add_incremental_splits(args, dataloaders, tf, tag="test")
@@ -162,3 +144,48 @@ def add_incremental_splits(args, dataloaders, tf, tag="train"):
         )
  
     return dataloaders
+
+
+def load_core(args, dataloaders, root, transform):
+    train_tasks = [1, 2, 4, 5, 6, 8, 9, 11]
+    np.random.shuffle(train_tasks)
+    test_tasks = [3, 7, 10]
+    datasets_train = []
+    datasets_test = []
+    
+    for t in train_tasks:
+        datasets_train.append(CORe50Session(root=root, 
+                                            train=True, 
+                                            transform=transform,
+                                            session_id=t))
+    for t in test_tasks:
+        datasets_test.append(CORe50Session(root=root, 
+                                            train=False, 
+                                            transform=transform,
+                                            session_id=t))
+    trainset = ConcatDataset(datasets_train)
+    testset = ConcatDataset(datasets_test)
+    
+    dataloaders["train"] = DataLoader(
+        trainset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers
+    )
+    dataloaders["test"] = DataLoader(
+        testset,
+        batch_size=128,
+        shuffle=False,
+        num_workers=args.num_workers
+    )
+    
+    for i in range(len(train_tasks)):
+        dataloaders[f"train{i}"] = DataLoader(
+            datasets_train[i],
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.num_workers
+        )
+    
+    return dataloaders
+    

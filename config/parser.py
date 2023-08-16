@@ -62,7 +62,7 @@ class Parser:
                             help='Root dir containing the dataset to train on.')
         parser.add_argument('--min-crop', type=float, default=0.2, help="Minimum size for cropping in data augmentation. range (0-1)")
         parser.add_argument('--dataset', '-d', default="cifar100",
-                            choices=['mnist', 'fmnist', 'cifar10', 'cifar100', 'tiny', 'sub', 'yt'],
+                            choices=['mnist', 'fmnist', 'cifar10', 'cifar100', 'tiny', 'core', 'yt'],
                             help='Dataset to train on')
         parser.add_argument('--training-type', default='inc', choices=['uni', 'inc', 'blurry'],
                             help='How to feed the data to the network (incremental context or not)')
@@ -153,10 +153,11 @@ class Parser:
             # Style parameters specific to tinyIN (TODO: add this to configs)
             self.min_style_alpha=0.4
             self.max_style_alpha=0.8
-        if self.args.dataset == 'sub':
-            self.args.img_size = 224
-            self.args.n_classes = 10
-            self.args.dim_in = 392 * self.args.nf
+        if self.args.dataset == 'core':
+            self.args.img_size = 128
+            self.args.n_classes = 50
+            self.args.n_tasks = 8
+            self.args.dim_in = 128 * self.args.nf  # Useless param here
         if self.args.dataset == 'yt':
             self.args.img_size = 224
             self.args.n_classes = 2
