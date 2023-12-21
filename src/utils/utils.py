@@ -159,8 +159,7 @@ def AG_SawSeriesPT(y:torch.tensor, sigma2:torch.tensor, d:torch.tensor, N:torch.
     s = 0
     for k in N:
         k = k.to(device)
-        # w1 = ((2*a)**k)*torch.special.gammaln((d+k)/2).exp()/(torch.special.gammaln(k+1).exp()*torch.special.gammaln(d/2).exp())
-        w = ((2*a)**k)*(torch.special.gammaln((d+k)/2) - torch.special.gammaln(k+1) - torch.special.gammaln(d/2)).exp()
+        w = ((np.sqrt(2)*a)**k)*(torch.special.gammaln((d+k)/2) - torch.special.gammaln(k+1) - torch.special.gammaln(d/2)).exp()
         s = s + w
     p = s*torch.exp(-1/2*(1/sigma2)).to(device)
     if not normalize: 

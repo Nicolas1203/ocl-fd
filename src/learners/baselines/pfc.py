@@ -17,7 +17,7 @@ from src.learners.ce import CELearner
 from src.utils.losses import SupConLoss
 from src.buffers.reservoir import Reservoir
 from src.models.resnet import ResNet18
-from src.models.fixed_resnet import FixedResNet18_cifar
+from src.models.fixed_resnet import FixedResNet18_cifar, FixedResNet18_tiny
 from src.utils.metrics import forgetting_line   
 from src.utils.utils import get_device
 
@@ -45,6 +45,12 @@ class PFCLearner(CELearner):
             out_dim=out_dim,
             fixed_classifier_feat_dim=fixed_classifier_feat_dim
             ).to(device)
+        
+        if self.params.dataset == "tiny":
+            model = FixedResNet18_tiny(
+                out_dim=out_dim,
+                fixed_classifier_feat_dim=fixed_classifier_feat_dim
+                ).to(device)
 
         model.last.weight.requires_grad = False        
         model.last.weight.copy_(fixed_weights)

@@ -187,6 +187,82 @@ class FixedPreActResNet_cifar(nn.Module):
         out = self.logits(out.view(out.size(0), -1))
         return out
 
+class FixedPreActResNet_tiny(nn.Module):
+    def __init__(self,
+                 block,
+                 num_blocks,
+                 filters,
+                 fixed_classifier_feat_dim,  # ADDED FOR FIXED CLASSIFIER
+                 num_classes=10,
+                 droprate=0):
+
+        # used in fixed classifier ##########
+        self.l2_norm = False
+        self.l2_scale = 1
+        #####################################
+
+        super().__init__()
+        self.in_planes = 64
+        last_planes = filters[-1] * block.expansion
+
+        self.conv1 = conv3x3(3, self.in_planes)
+        self.stage1 = self._make_layer(block, filters[0], num_blocks[0], stride=1, droprate=droprate)
+        self.stage2 = self._make_layer(block, filters[1], num_blocks[1], stride=2, droprate=droprate)
+        self.stage3 = self._make_layer(block, filters[2], num_blocks[2], stride=2, droprate=droprate)
+        self.stage4 = self._make_layer(block, filters[3], num_blocks[3], stride=2, droprate=droprate)
+        self.bn_last = nn.BatchNorm2d(last_planes)
+
+        # used in fixed classifier ##########
+        # the junction (last_planes is the number of activations before the fixed classifier)
+        self.fc1 = nn.Linear(2048, fixed_classifier_feat_dim)
+        # the fixed classifier
+        # TODO: NB WILL NOT BE USED WHEN INSTANTIATED BY AGENT (OVERWRITTEN BY MODULEDICT)
+        self.last = nn.Linear(fixed_classifier_feat_dim, num_classes, bias=False)
+        #####################################
+
+    def _make_layer(self, block, planes, num_blocks, stride, droprate):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride, droprate))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def features(self, x):
+
+        # same as normal resnet ###
+        out = self.conv1(x)
+        out = self.stage1(out)
+        out = self.stage2(out)
+        out = self.stage3(out)
+        out = self.stage4(out)
+        ###########################
+        out = F.relu(self.bn_last(out))
+        out = F.avg_pool2d(out, 4)
+        ############################
+        # view to make it compatible with our fc1
+        out = out.view(out.size(0), -1)
+        # out = out.flatten()
+        # used in fixed classifier ##########
+        out = self.fc1(out)  # added for our approach. Comment for the original class
+
+        if self.l2_norm:
+            # apply normalization to features (weights are already normalized from init)
+            norm = out.norm(p=2, dim=1, keepdim=True) + 1e-5
+            out = out.div(norm) * self.l2_scale
+            # TODO: NB IT RETURN THE NORMALIZED FEATURES WE LOSE THE ORIGINAL ONES IF THEY ARE NEEDED
+        ######################################
+
+        return out
+
+    def logits(self, x):
+        x = self.last(x)
+        return x
+
+    def forward(self, x):
+        out = self.features(x)
+        out = self.logits(out.view(out.size(0), -1))
+        return out
 
 # ResNet for Cifar10/100 or the dataset with image size 32x32
 
@@ -196,6 +272,9 @@ def FixedResNet20_cifar(out_dim=10, **kwargs):
 
 def FixedResNet18_cifar(out_dim=10, **kwargs):
     return FixedPreActResNet_cifar(PreActBlock, [2, 2, 2, 2], [64, 128, 256, 512], num_classes=out_dim, **kwargs)
+
+def FixedResNet18_tiny(out_dim=10, **kwargs):
+    return FixedPreActResNet_tiny(PreActBlock, [2, 2, 2, 2], [64, 128, 256, 512], num_classes=out_dim, **kwargs)
 
 def FixedResNet56_cifar(out_dim=10, **kwargs):
     return FixedPreActResNet_cifar(PreActBlock, [9, 9, 9], [16, 32, 64], num_classes=out_dim, **kwargs)

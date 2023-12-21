@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from copy import deepcopy
 
 from src.learners.base import BaseLearner
-from src.utils.losses import vMFLoss, AGDLoss
+from src.utils.losses import vMFLoss, AGDLoss, MLELoss
 from src.utils import name_match
 from src.utils.utils import get_device
 from src.utils.metrics import forgetting_line 
@@ -60,6 +60,13 @@ class FDLearner(BaseLearner):
             )
         elif self.params.fd_loss == 'agd':
             return AGDLoss(
+                var=self.params.var,
+                mu=self.params.mu,
+                proj_dim=self.params.proj_dim,
+                norm_all=self.params.norm_all_classes
+            )
+        elif self.params.fd_loss == 'mle':
+            return MLELoss(
                 var=self.params.var,
                 mu=self.params.mu,
                 proj_dim=self.params.proj_dim,
@@ -184,52 +191,139 @@ class FDLearner(BaseLearner):
     
     def evaluate(self, dataloaders, task_id):
         if self.params.eval_proj:
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
-                self.model.eval()
-                accs = []
-
-                all_preds = []
-                all_targets = []
-                for j in range(task_id + 1):
-                    test_preds, test_targets = self.encode(dataloaders[f"test{j}"], use_proj=self.params.eval_proj)
-                    acc = accuracy_score(test_preds, test_targets)
-                    accs.append(acc)
-                    if not self.params.no_wandb:
-                        all_preds = np.concatenate([all_preds, test_preds])
-                        all_targets = np.concatenate([all_targets, test_targets])
-                        wandb.log({
-                            f"acc_{j}": acc,
-                            "task_id": task_id
-                        })
-                for _ in range(self.params.n_tasks - task_id - 1):
-                    accs.append(np.nan)
-                self.results.append(accs)
-                
-                line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
-                line = line[0].to_numpy().tolist()
-                self.results_forgetting.append(line)
-
-                self.print_results(task_id)
-                
-                # Make confusion matrix
-                if not self.params.no_wandb:
-                    # re-index to have classes in task order
-                    all_targets = [self.params.labels_order.index(int(i)) for i in all_targets]
-                    all_preds = [self.params.labels_order.index(int(i)) for i in all_preds]
-                    n_im_pt = self.params.n_classes // self.params.n_tasks
-                    cm = confusion_matrix(all_targets, all_preds)
-                    cm_log = np.log(1 + cm)
-                    fig = plt.matshow(cm_log)
-                    wandb.log({
-                            "cm_raw": cm,
-                            "cm": fig,
-                            "task_id": task_id
-                        })
-
-                return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
+            if self.params.no_guillotine:
+                return self.evaluate_no_guillotine(dataloaders, task_id)
+            else:
+                return self.evaluate_proj(dataloaders, task_id)
         else:
             return super().evaluate(dataloaders, task_id)
     
+    def evaluate_proj(self, dataloaders, task_id):
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            self.model.eval()
+            accs = []
+
+            all_preds = []
+            all_targets = []
+            for j in range(task_id + 1):
+                test_preds, test_targets = self.encode(dataloaders[f"test{j}"], use_proj=self.params.eval_proj)
+                acc = accuracy_score(test_preds, test_targets)
+                accs.append(acc)
+                if not self.params.no_wandb:
+                    all_preds = np.concatenate([all_preds, test_preds])
+                    all_targets = np.concatenate([all_targets, test_targets])
+                    wandb.log({
+                        f"acc_{j}": acc,
+                        "task_id": task_id
+                    })
+            for _ in range(self.params.n_tasks - task_id - 1):
+                accs.append(np.nan)
+            self.results.append(accs)
+            
+            line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
+            line = line[0].to_numpy().tolist()
+            self.results_forgetting.append(line)
+
+            self.print_results(task_id)
+            
+            # Make confusion matrix
+            # if not self.params.no_wandb:
+            #     # re-index to have classes in task order
+            #     all_targets = [self.params.labels_order.index(int(i)) for i in all_targets]
+            #     all_preds = [self.params.labels_order.index(int(i)) for i in all_preds]
+            #     n_im_pt = self.params.n_classes // self.params.n_tasks
+            #     cm = confusion_matrix(all_targets, all_preds)
+            #     cm_log = np.log(1 + cm)
+            #     fig = plt.matshow(cm_log)
+            #     wandb.log({
+            #             "cm_raw": cm,
+            #             "cm": fig,
+            #             "task_id": task_id
+            #         })
+
+            return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
+        
+    def evaluate_no_guillotine(self, dataloaders, task_id):
+        print("head finetuning")
+
+        # get memory dataset
+        mem_x, mem_y = self.buffer.get_all()
+        
+        # copy of current model
+        model_temp = deepcopy(self.model)
+        optim = torch.optim.Adam(model_temp.parameters(), lr=0.0005)
+        
+        # Freeze all layers except last
+        for name, param in model_temp.named_parameters():
+            if "head" not in name:
+                param.requires_grad = False
+        
+        # freeze BN
+        for m in model_temp.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+        
+        # train model for 20 epochs on mem_x and mem_y
+        for epoch in range(50):
+            batch_size = 200
+            for i in range(0, len(mem_x), batch_size):
+                batch_x = mem_x[i:i+batch_size].to(device)
+                batch_y = mem_y[i:i+batch_size].to(device)
+                
+                # Augment
+                # augmentations = self.augment(combined_x=batch_x, mem_x=mem_x.to(device), batch_x=batch_x.to(device))
+                augmentations = [self.transform_test(batch_x)]
+                # Inference
+                proj_list = []
+                for aug in augmentations:
+                    _, p = model_temp(aug, proj_norm=True)
+                    proj_list.append(p.unsqueeze(1))
+
+                projections = torch.cat(proj_list, dim=1)
+
+                loss = self.criterion(
+                    features=projections,
+                    labels=batch_y
+                    )
+
+                # Loss
+                loss = loss.mean()
+
+                # Backprop
+                loss.backward()
+                optim.step()
+                optim.zero_grad()
+                print(f"Loss {loss.item():.3f}  batch {i}", end="\r")
+                
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            model_temp.eval()
+            accs = []
+
+            all_preds = []
+            all_targets = []
+            for j in range(task_id + 1):
+                test_preds, test_targets = self.encode(dataloader=dataloaders[f"test{j}"], model=model_temp, use_proj=self.params.eval_proj)
+                acc = accuracy_score(test_preds, test_targets)
+                accs.append(acc)
+                if not self.params.no_wandb:
+                    all_preds = np.concatenate([all_preds, test_preds])
+                    all_targets = np.concatenate([all_targets, test_targets])
+                    wandb.log({
+                        f"acc_{j}": acc,
+                        "task_id": task_id
+                    })
+            for _ in range(self.params.n_tasks - task_id - 1):
+                accs.append(np.nan)
+            self.results.append(accs)
+            
+            line = forgetting_line(pd.DataFrame(self.results), task_id=task_id, n_tasks=self.params.n_tasks)
+            line = line[0].to_numpy().tolist()
+            self.results_forgetting.append(line)
+
+            self.print_results(task_id)
+
+        return np.nanmean(self.results[-1]), np.nanmean(self.results_forgetting[-1])
+        
     def save_results(self):
         if self.params.eval_proj:
             if self.params.run_id is not None:
@@ -315,7 +409,7 @@ class FDLearner(BaseLearner):
         mem_representations = torch.cat(all_reps, dim=0)
         return mem_representations, mem_labels
     
-    def encode(self, dataloader, use_proj=False, nbatches=-1):
+    def encode(self, dataloader, model=None, use_proj=False, nbatches=-1):
         """Compute representations - labels pairs for a certain number of batches of dataloader.
             Not really optimized.
         Args:
@@ -334,8 +428,13 @@ class FDLearner(BaseLearner):
                 
                 inputs = inputs.to(self.device)
                 if use_proj:
-                    logits = self.model.logits(self.transform_test(inputs))
-                    preds = logits[:,:self.classes_seen_so_far.long().max()].argmax(dim=1)
+                    if model is None:
+                        logits = self.model(self.transform_test(inputs))[1]
+                    else:
+                        logits = model(self.transform_test(inputs))[1]
+                        
+                    # preds = logits[:,:self.classes_seen_so_far.long().max()].argmax(dim=1)
+                    preds = logits.argmax(dim=1)
 
                     if i == 0:
                         all_labels = labels.cpu().numpy()
@@ -344,7 +443,10 @@ class FDLearner(BaseLearner):
                         all_labels = np.hstack([all_labels, labels.cpu().numpy()])
                         all_feat = np.hstack([all_feat, preds.cpu().numpy()])
                 else:
-                    features, _ = self.model(self.transform_test(inputs))
+                    if model is None:
+                        features, _ = self.model(self.transform_test(inputs))
+                    else:
+                        features, _ = model(self.transform_test(inputs))
                     if i == 0:
                         all_labels = labels.cpu().numpy()
                         all_feat = features.cpu().numpy()

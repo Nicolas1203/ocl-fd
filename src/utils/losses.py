@@ -209,3 +209,52 @@ class AGDLoss(nn.Module):
         loss = - (torch.log(densities / norms_densities) * mask)[mask_mean, :].sum()
         
         return loss
+    
+
+class MLELoss(nn.Module):
+    def __init__(self, var=1, **kwargs):
+        super().__init__()
+        self.var = var
+        self.dim = kwargs.get('proj_dim', 128)
+        self.mu = kwargs.get('mu', 1)
+        self.init_class_seen()
+        self.norm_all = kwargs.get('norm_all', False)
+
+    def init_class_seen(self):
+        self.class_seen = torch.LongTensor(size=(0,)).to(device)
+    
+    def update_class_seen(self, labels):
+        new_classes = labels.unique()
+        self.class_seen = torch.cat([self.class_seen, new_classes]).unique()
+
+    # @profile
+    def forward(self, features, labels=None, **kwargs):
+        nviews = features.shape[1]
+        labels = labels.contiguous().view(-1).short()
+
+        self.update_class_seen(labels)
+        
+        uniq = [i for i in range(int(max(self.class_seen) + 1))]
+
+        mask = torch.eq(torch.tensor(uniq).unsqueeze(1).to(device),labels.unsqueeze(0))
+        mask = mask.repeat(1, nviews).long().to(device)
+
+        features_expand = (torch.cat(torch.unbind(features, dim=1), dim=0)).expand(mask.shape[0], mask.shape[1], features.shape[-1])
+        maskoh = F.one_hot(torch.ones_like(mask) * torch.arange(0, mask.shape[0]).to(device).view(-1, 1), features_expand.shape[-1])
+        features_p = (features_expand * maskoh).sum(-1)
+
+        densities = AG_SawSeriesPT(
+            y=features_p.double(),
+            sigma2=torch.tensor([self.var], dtype=torch.float64).to(device),
+            d=torch.tensor([self.dim], dtype=torch.float64).to(device),
+            N=torch.arange(0,40)
+            ).to(device)
+        if self.norm_all:
+            mask_mean = torch.arange(len(densities)).to(device)
+        else:
+            mask_mean = labels.unique().long()
+
+        # Compute final loss
+        loss = - (torch.log(densities) * mask)[mask_mean, :].sum()
+        
+        return loss

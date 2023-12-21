@@ -105,6 +105,7 @@ class Parser:
         parser.add_argument('--fd-loss', help="vmf or agd loss", default='vmf')
         parser.add_argument('-mu', type=float, default=1.0, help="mu value for FD model.")
         parser.add_argument('--norm-all-classes', action='store_true', help="Use this to normalize using every classes known.")
+        parser.add_argument('--no-guillotine', action='store_true', help="retrain the model with same objective but freeze representations.")
         # DERpp arguments
         parser.add_argument('--derpp-alpha', type=float, default=0.1, help="Values of alpha un der++ loss")
         parser.add_argument('--derpp-beta', type=float, default=0.5, help="Values of beta un der++ loss")
