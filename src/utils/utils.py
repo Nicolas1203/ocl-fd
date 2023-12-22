@@ -145,8 +145,8 @@ def AG_SawSeriesPT(y:torch.tensor, sigma2:torch.tensor, d:torch.tensor, N:torch.
     """Implements Saw series in PyTorch
 
     Args:
-        y (torch.tensor): Density value
-        sigma2 (torch.tensor):      Standard deviation of the original gaussian
+        y (torch.tensor):           Density value
+        sigma2 (torch.tensor):      Variance of the original gaussian
         d (torch.tensor):           Dimensionality of the data
         N (torch.arange):           Number of elements in the (theoriticaly infinite) sum
         normalize (bool, optional): Whether to normalize the density. Defaults to True.
@@ -159,7 +159,7 @@ def AG_SawSeriesPT(y:torch.tensor, sigma2:torch.tensor, d:torch.tensor, N:torch.
     s = 0
     for k in N:
         k = k.to(device)
-        w = ((np.sqrt(2)*a)**k)*(torch.special.gammaln((d+k)/2) - torch.special.gammaln(k+1) - torch.special.gammaln(d/2)).exp()
+        w = ((2*a)**k)*(torch.special.gammaln((d+k)/2) - torch.special.gammaln(k+1) - torch.special.gammaln(d/2)).exp()
         s = s + w
     p = s*torch.exp(-1/2*(1/sigma2)).to(device)
     if not normalize: 
