@@ -233,7 +233,7 @@ Download `cropped_128x128_images.zip`from [the official website](https://vlomona
 
 then exatract and rename make the changes so that you have the following file architecture:
 
-"""bash
+```bash
 core50/
 ├── test
 │   ├── s10
@@ -248,7 +248,7 @@ core50/
     ├── s6
     ├── s8
     └── s9
-"""
+```
 
 # Cite
 
