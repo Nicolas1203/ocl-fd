@@ -1,10 +1,10 @@
 # Learning Representations on the Unit Sphere: Application to Online Continual Learning
 
-This repository is the official implementation of our paper "Learning Representations on the Unit Sphere: Application to Online Continual Learning". This paper is currently under review.
+This repository is the official implementation of our paper "Learning Representations on the Unit Sphere: Application to Online Continual Learning". This paper has been accepted in the AAAI 2024.
 
 # Method illustration
 
-Our techniques fixes mean direction on the unit sphere for continual training like illustrated here.
+Our techniques fixes means direction on the unit sphere for continual training illustrated here.
 ![](illustration.png)
 
 # Project structure
@@ -252,5 +252,16 @@ core50/
 
 # Cite
 
-Coming soon.
-
+```bibtex
+@inproceedings{michel_learning_2023,
+  author       = {Nicolas Michel and
+                  Giovanni Chierchia and
+                  Romain Negrel and
+                  Jean{-}Fran{\c{c}}ois Bercher},
+  title        = {Learning Representations on the Unit Sphere: Investigating Angular
+                  Gaussian and Von Mises-Fisher Distributions for Online Continual Learning},
+  booktitle    = {Thirty-Eighth {AAAI} Conference on Artificial Intelligence},
+  pages        = {14350--14358},
+  year         = {2024},
+}
+```
